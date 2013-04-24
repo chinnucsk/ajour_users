@@ -5,15 +5,43 @@
 -compile(export_all).
 
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%%           helpers:
+%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 validate_password(UserId, Password, Users) ->
     erlsha2:sha256(Password) =:= dict:fetch(UserId, Users).
 
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%%           The External Interface:
+%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+-spec start_link() -> {ok,pid()} | ignore | {error, {already_started, pid()} | term()}.
 start_link() ->
     gen_server:start_link({local, ajour_users}, ajour_users, [], []).
 
+create_user(UserId, Password) ->
+    gen_server:call(ajour_users, {create_user, UserId, Password}).
 
-% Init -- perhaps from a database.
+update_user(UserId, OldPassword, NewPassword) ->
+    gen_server:call(ajour_users, {update_user, UserId, OldPassword, NewPassword}).
+
+delete_user(UserId, Password) ->
+    gen_server:call(ajour_users, {delete_user, UserId, Password}).
+
+validate_user(UserId, Password) ->
+    gen_server:cast(ajour_users, {validate_user, UserId, Password}).
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%%           The GenServer Interface:
+%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 init(_Arg) ->
     {ok, dict:new()}.
 
@@ -61,5 +89,3 @@ handle_cast({validate_user, UserId, Password}, Users) ->
         true ->
             {reply, validate_password(UserId, Password, Users), Users}
     end.
-
-
