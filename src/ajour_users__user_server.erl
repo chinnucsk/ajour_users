@@ -15,6 +15,7 @@
 validate_password(UserId, Password, Users) ->
     erlsha2:sha256(Password) =:= dict:fetch(UserId, Users).
 
+
 write_user_record_to_database(UserId, Password) ->
     %% write the user to the database
     User_r = #ajour_user{user_id = UserId, password_sha = erlsha2:sha256(Password)},
@@ -23,6 +24,21 @@ write_user_record_to_database(UserId, Password) ->
           end,
     mnesia:transaction(Fun).
     
+delete_user_record_from_database(UserId) ->
+    Fun = fun() ->
+                  List = mnesia:match_object(#ajour_user{user_id = UserId, password_sha = '_'}),
+                  lists:foreach(fun(X) ->
+                                        mnesia:delete_object(X)
+                                end, List)
+          end,
+    mnesia:transaction(Fun).
+                      
+load_all_users_from_database(UserDict) ->
+    List = mnesia:match_object(#ajour_user{user_id = '_', password_sha = '_'}),
+    lists:foldr(fun(User, Dict) ->
+                        dict:store(User#ajour_user.user_id, User#ajour_user.password_sha, Dict)
+                end, UserDict, List).
+                      
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%
@@ -58,7 +74,7 @@ init(_Arg) ->
     mnesia:start(),
     mnesia:create_table(users_db,
                         [{attributes, record_info(fields, ajour_user)}]),
-    {ok, dict:new()}.
+    {ok, load_all_users_from_database(dict:new())}.
 
 
 handle_call({create_user, UserId, Password}, _From, Users) ->
@@ -66,7 +82,7 @@ handle_call({create_user, UserId, Password}, _From, Users) ->
         true ->
             {reply, {error, <<"User already exists">>}, Users};
         false ->
-            write_user_record_to_databaseb(UserId, Password),
+            write_user_record_to_database(UserId, Password),
             Users1 = dict:store(UserId, Password, Users),
             {reply, ok, Users1}
     end;
@@ -93,6 +109,7 @@ handle_call({delete_user, UserId, Password}, _From, Users) ->
                 false ->
                     {reply, {error, <<"Invalid Password">>}, Users};
                 true ->
+                    delete_user_record_from_database(UserId),
                     Users1 = dict:erase(UserId, Users),
                     {reply, ok, Users1}
             end
