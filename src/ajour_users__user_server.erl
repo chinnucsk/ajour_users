@@ -2,7 +2,11 @@
 
 -behaviour(gen_server).
 
--compile(export_all).
+-export([start_link/0, create_user/2, update_user/3, delete_user/2, validate_user/2]).
+
+-export([init/1, handle_call/3, handle_cast/2]).
+
+
 
 -record(ajour_user, {user_id,
                      password_sha}).
@@ -33,11 +37,18 @@ delete_user_record_from_database(UserId) ->
           end,
     mnesia:transaction(Fun).
                       
-load_all_users_from_database(UserDict) ->
-    List = mnesia:match_object(#ajour_user{user_id = '_', password_sha = '_'}),
-    lists:foldr(fun(User, Dict) ->
-                        dict:store(User#ajour_user.user_id, User#ajour_user.password_sha, Dict)
-                end, UserDict, List).
+init_database(UserDict) ->
+    mnesia:create_schema([node()]),
+    mnesia:start(),
+    mnesia:create_table(users_db,
+                        [{attributes, record_info(fields, ajour_user)}]),
+    Fun = fun() ->
+                  List = mnesia:match_object(#ajour_user{user_id = '_', password_sha = '_'}),
+                  lists:foldr(fun(User, Dict) ->
+                                      dict:store(User#ajour_user.user_id, User#ajour_user.password_sha, Dict)
+                              end, UserDict, List)
+          end,
+    mnesia:transaction(Fun).
                       
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -48,7 +59,8 @@ load_all_users_from_database(UserDict) ->
 -spec start_link() -> {ok,pid()} | ignore |
                       {error, {already_started, pid()} | term()}.
 start_link() ->
-    gen_server:start_link({local, ajour_users}, ajour_users, [], []).
+    {ok, Pid} = gen_server:start_link(ajour_users__user_server, [], []),
+    register(ajour_users, Pid).
 
 create_user(UserId, Password) ->
     gen_server:call(ajour_users, {create_user, UserId, Password}).
@@ -70,11 +82,7 @@ validate_user(UserId, Password) ->
 %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 init(_Arg) ->
-    mnesia:create_schema([node()]),
-    mnesia:start(),
-    mnesia:create_table(users_db,
-                        [{attributes, record_info(fields, ajour_user)}]),
-    {ok, load_all_users_from_database(dict:new())}.
+    {ok, init_database(dict:new())}.
 
 
 handle_call({create_user, UserId, Password}, _From, Users) ->
